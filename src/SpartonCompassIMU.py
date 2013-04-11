@@ -48,7 +48,7 @@ import rospy
 from std_msgs.msg import String
 from geometry_msgs.msg import Pose2D
 
-import serial, string, math, time, calendar, re
+import serial, math, time, re, select
 
 #import tf
 from sensor_msgs.msg import Imu
@@ -89,11 +89,10 @@ def _shutdown():
 def serial_lines(ser, brk="\n"):
     buf = ""
     while True:
-        waiting = ser.inWaiting()
-        if waiting == 0:
-            time.sleep(0.01)
+        rlist, _, _ = select.select([ ser ], [], [], 1.0)
+        if not rlist:
             continue
-        new = ser.read(waiting)
+        new = ser.read(ser.inWaiting())
         buf += new
         if brk in new:
             msg, buf = buf.split(brk)[-2:]
