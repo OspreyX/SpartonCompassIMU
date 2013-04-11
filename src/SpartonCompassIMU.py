@@ -89,10 +89,14 @@ def _shutdown():
 def serial_lines(ser, brk="\n"):
     buf = ""
     while True:
-        new = ser.read(ser.inWaiting())
+        waiting = ser.inWaiting()
+        if waiting == 0:
+            time.sleep(0.01)
+            continue
+        new = ser.read(waiting)
         buf += new
-        if '\n' in new:
-            msg, buf = buf.split('\n')[-2:]
+        if brk in new:
+            msg, buf = buf.split(brk)[-2:]
             yield msg
 
 if __name__ == '__main__':
@@ -132,10 +136,7 @@ if __name__ == '__main__':
 
         lines = serial_lines(ser)
 
-        while not rospy.is_shutdown():
-            while ser.inWaiting() == 0:
-                time.sleep(0.01)
- 
+        while not rospy.is_shutdown(): 
             data = lines.next()
             #rospy.loginfo("RX: %s" % data) 
             
