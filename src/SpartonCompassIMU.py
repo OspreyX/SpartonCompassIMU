@@ -54,12 +54,6 @@ import serial, string, math, time, calendar, re
 from sensor_msgs.msg import Imu
 from geometry_msgs.msg import Quaternion
 
-'''START_OUTPUTS=[
-"$PSPA,QUAT,RPT=0.5\r\n",
-"$PSPA,A,GLOM\r\n",
-"$PSPA,G,GLOM\r\n"
-]'''
-
 START_OUTPUTS = [
 #"1 accelp.p\r",
 #"1 gyrop.p\r",
@@ -91,6 +85,15 @@ def _shutdown():
         ser.write(output)
     rospy.loginfo('Closing Digital Compass Serial port')
     ser.close()
+
+def serial_lines(ser, brk="\n"):
+    buf = ""
+    while True:
+        new = ser.read(ser.inWaiting())
+        buf += new
+        if '\n' in new:
+            msg, buf = buf.split('\n')[-2:]
+            yield msg
 
 if __name__ == '__main__':
     global ser
@@ -127,11 +130,13 @@ if __name__ == '__main__':
             rospy.loginfo("TX: %s" % output) 
             ser.write(output)
 
+        lines = serial_lines(ser)
+
         while not rospy.is_shutdown():
             while ser.inWaiting() == 0:
                 time.sleep(0.01)
  
-            data = ser.readline()
+            data = lines.next()
             #rospy.loginfo("RX: %s" % data) 
             
             try:
