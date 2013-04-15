@@ -38,6 +38,7 @@
 
 # Changelog
 
+# 2013.04.15 Switch to Vector3 message for reporting roll/pitch/yaw.
 # 2013.01.06 Add IMU message
 # 2012.12.13 Use Pos2D message, normalized to 0 ~ 2*PI
 #
@@ -46,7 +47,7 @@
 import roslib; roslib.load_manifest('SpartonCompassIMU')
 import rospy
 from std_msgs.msg import String
-from geometry_msgs.msg import Pose2D
+from geometry_msgs.msg import Vector3
 
 import serial, math, time, re, select
 
@@ -101,14 +102,14 @@ def serial_lines(ser, brk="\n"):
 if __name__ == '__main__':
     global ser
     rospy.init_node('SpartonDigitalCompassIMU')
-    pose2d_pub = rospy.Publisher('imu/heading', Pose2D)
+    rpy_pub = rospy.Publisher('imu/rpy', Vector3)
     imu_pub = rospy.Publisher('imu/data', Imu)
 
     port = rospy.get_param('~port', '/dev/ttyUSB0')
     baud = rospy.get_param('~baud', 115200)
     compass_offset_degrees = rospy.get_param('~offset', 0.0)
 
-    pose2d_data = Pose2D()
+    rpy_data = Vector3()
     imu_data = Imu(header=rospy.Header(frame_id="imu"))
     
     #TODO find a right way to convert imu acceleration/angularvel./orientation accuracy to covariance
@@ -154,10 +155,10 @@ if __name__ == '__main__':
                     imu_pub.publish(imu_data)
                 elif msg == "C":
                     timestamp, roll, pitch, yaw = fields
-                    pose2d_data.x = math.radians(pitch)
-                    pose2d_data.y = math.radians(roll)
-                    pose2d_data.theta = math.radians(yaw)
-                    pose2d_pub.publish(pose2d_data)
+                    rpy_data.x = math.radians(roll)
+                    rpy_data.y = math.radians(pitch)
+                    rpy_data.z = math.radians(yaw)
+                    rpy_pub.publish(rpy_data)
             except ValueError as e:
                 rospy.logerr(str(e))
                 continue
