@@ -47,7 +47,7 @@
 import roslib; roslib.load_manifest('SpartonCompassIMU')
 import rospy
 from std_msgs.msg import String
-from geometry_msgs.msg import Vector3
+from geometry_msgs.msg import Vector3Stamped
 
 import serial, math, time, re, select
 
@@ -102,14 +102,14 @@ def serial_lines(ser, brk="\n"):
 if __name__ == '__main__':
     global ser
     rospy.init_node('SpartonDigitalCompassIMU')
-    rpy_pub = rospy.Publisher('imu/rpy', Vector3)
+    rpy_pub = rospy.Publisher('imu/rpy', Vector3Stamped)
     imu_pub = rospy.Publisher('imu/data', Imu)
 
     port = rospy.get_param('~port', '/dev/ttyUSB0')
     baud = rospy.get_param('~baud', 115200)
     compass_offset_degrees = rospy.get_param('~offset', 0.0)
 
-    rpy_data = Vector3()
+    rpy_data = Vector3Stamped(header=rospy.Header(frame_id="imu"))
     imu_data = Imu(header=rospy.Header(frame_id="imu"))
     
     #TODO find a right way to convert imu acceleration/angularvel./orientation accuracy to covariance
@@ -152,12 +152,14 @@ if __name__ == '__main__':
                     imu_data.orientation.y = x
                     imu_data.orientation.z = -z
                     imu_data.orientation.w = w
+                    imu_data.header.stamp = rospy.Time.now()
                     imu_pub.publish(imu_data)
                 elif msg == "C":
-                    timestamp, roll, pitch, yaw = fields
-                    rpy_data.x = math.radians(roll)
-                    rpy_data.y = math.radians(pitch)
-                    rpy_data.z = math.radians(yaw)
+                    timestamp, pitch, roll, yaw = fields
+                    rpy_data.vector.x = math.radians(roll)
+                    rpy_data.vector.y = math.radians(pitch)
+                    rpy_data.vector.z = math.radians(yaw)
+                    rpy_data.header.stamp = rospy.Time.now()
                     rpy_pub.publish(rpy_data)
             except ValueError as e:
                 rospy.logerr(str(e))
