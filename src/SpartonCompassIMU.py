@@ -48,46 +48,50 @@ import roslib; roslib.load_manifest('SpartonCompassIMU')
 import rospy
 from std_msgs.msg import String
 from geometry_msgs.msg import Vector3Stamped
+from sensor_msgs.msg import Imu
 
 import serial, math, time, re, select
 
-#import tf
-from sensor_msgs.msg import Imu
-from geometry_msgs.msg import Quaternion
-
-START_OUTPUTS = [
-#"1 accelp.p\r",
-#"1 gyrop.p\r",
-"1 quat.p\r"
-"1 compass.p\r"
-]
-
-STOP_OUTPUTS = [
-#"0 accel.p\r",
-#"0 gyro.p\r",
-"0 quat.p\r"
-"0 compass.p\r"
-]
-
-def wrapTo2PI(theta):
-    '''Normalize an angle in radians to [0, 2*pi]
-    '''
-    return theta % (2.*math.pi)
-
-def wrapToPI(theta):
-    '''Normalize an angle in radians to [-pi, pi]
-    '''
-    return (wrapTo2PI(theta+math.pi) - math.pi)
+SCRIPT = """
+forget ms_delay
+variable ms_delay
+: position_northtek
+pitch di@ f. ." ," 
+roll di@ f. ." ," 
+yaw di@ f. ." ,"
+accelp di@ @ f. ." ,"
+accelp di@ 4 + @ f. ." ,"
+accelp di@ 8 + @ f. ." ,"
+gyrop di@ @ f. ." ,"
+gyrop di@ 4 + @ f. ." ,"
+gyrop di@ 8 + @ f. ." ,"
+quaternion di@ @ f. ." ,"
+quaternion di@ 4 + @ f. ." ,"
+quaternion di@ 8 + @ f. ." ,"
+quaternion di@ 12 + @ f. ." \\r\\n"
+;
+: tOutput 
+100 ms_delay !
+time
+begin 
+?key 0= while
+begin 
+time over - ms_delay @ < while
+repeat drop time                   
+position_northtek
+repeat 
+drop
+;
+"""
 
 def _shutdown():
     global ser
     rospy.loginfo("Sparton shutting down.")
-    for output in STOP_OUTPUTS:
-        ser.write(output)
+    ser.write("\x1a")
     rospy.loginfo('Closing Digital Compass Serial port')
     ser.close()
 
-def serial_lines(ser, brk="\n"):
+def serial_lines(ser, brk="\r\n"):
     buf = ""
     while True:
         rlist, _, _ = select.select([ ser ], [], [], 1.0)
@@ -95,7 +99,7 @@ def serial_lines(ser, brk="\n"):
             continue
         new = ser.read(ser.inWaiting())
         buf += new
-        if brk in new:
+        while brk in buf:
             msg, buf = buf.split(brk)[-2:]
             yield msg
 
@@ -127,45 +131,73 @@ if __name__ == '__main__':
     rospy.on_shutdown(_shutdown)
 
     try:
-        #Setup Compass serial port
+        rospy.loginfo("Opening serial port %s for digital compass." % port)
         ser = serial.Serial(port=port, baudrate=baud, timeout=.5)
-
-        for output in START_OUTPUTS:
-            rospy.loginfo("TX: %s" % output) 
-            ser.write(output)
-
+        ser.write("\x1a")
+        time.sleep(0.05) 
+        ser.flushInput()
         lines = serial_lines(ser)
+
+        # Send output script. TODO: Verify this after programming.
+        rospy.loginfo("Sending output program to digital compass.")
+        success = False
+        while not success:
+            success = True
+            for output_line in SCRIPT.splitlines():
+                # rospy.loginfo("TX: %s" % output_line) 
+                ser.write("%s\r\n" % output_line)
+                time.sleep(0.05) 
+                input_line = lines.next()
+                if input_line != output_line and input_line != output_line + "OK":
+                    print repr(input_line), repr(output_line)
+                    rospy.logwarn("Bad output program. Retrying now.")
+                    success = False
+                    break
+                    
+        rospy.loginfo("Program sent successfully. Commencing sensor output.")
+                    
+        time.sleep(0.2)
+        ser.flushInput()
+        
+        while True:
+            ser.write("tOutput\r")
+            input_line = lines.next()
+            if input_line.startswith('tOutput'):
+                rospy.loginfo("Sensor output beginning.")
+                break 
 
         while not rospy.is_shutdown(): 
             data = lines.next()
             #rospy.loginfo("RX: %s" % data) 
             
             try:
-                msg, contents = re.split("[:,]", data, 1)
+                fields = map(float, data.split(","))
+                pitch, roll, yaw, ax, ay, az, gx, gy, gz, qx, qy, qz, qw = fields        
 
-                fields = map(float, contents.split(","))
-                #print msg, fields
-        
-                if msg == "QUAT":
-                    w, x, y, z = fields
-                    imu_data.orientation.x = y
-                    imu_data.orientation.y = x
-                    imu_data.orientation.z = -z
-                    imu_data.orientation.w = w
-                    imu_data.header.stamp = rospy.Time.now()
-                    imu_pub.publish(imu_data)
-                elif msg == "C":
-                    timestamp, pitch, roll, yaw = fields
-                    rpy_data.vector.x = math.radians(roll)
-                    rpy_data.vector.y = math.radians(pitch)
-                    rpy_data.vector.z = math.radians(yaw)
-                    rpy_data.header.stamp = rospy.Time.now()
-                    rpy_pub.publish(rpy_data)
+                imu_data.header.stamp = rospy.Time.now()
+                imu_data.orientation.x = qy
+                imu_data.orientation.y = qx
+                imu_data.orientation.z = -qz
+                imu_data.orientation.w = qw
+                imu_data.angular_velocity.x = gy
+                imu_data.angular_velocity.y = gx
+                imu_data.angular_velocity.z = -gz
+                imu_data.linear_acceleration.x = ay
+                imu_data.linear_acceleration.y = ax
+                imu_data.linear_acceleration.z = -az
+                imu_pub.publish(imu_data)
+
+                rpy_data.header.stamp = rospy.Time.now()
+                rpy_data.vector.x = math.radians(roll)
+                rpy_data.vector.y = math.radians(pitch)
+                rpy_data.vector.z = math.radians(yaw)
+                rpy_pub.publish(rpy_data)
+
             except ValueError as e:
                 rospy.logerr(str(e))
                 continue
 
         rospy.loginfo('Closing Digital Compass Serial port')
-        ser.close() #Close D_Compass serial port
+        ser.close()
     except rospy.ROSInterruptException:
         pass
