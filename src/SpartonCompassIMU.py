@@ -52,8 +52,8 @@ from sensor_msgs.msg import Imu
 
 import serial, math, time, re, select
 
+# forget ms_delay
 SCRIPT = """
-forget ms_delay
 variable ms_delay
 : position_northtek
 pitch di@ f. ." ," 
@@ -154,7 +154,7 @@ if __name__ == '__main__':
                 if input_line == output_line + "OK":
                     # Line echoed with acknowledgment.
                     continue
-                if input_line.startswith("forget") and output_line.startswith("Can't find"):
+                if input_line.startswith("forget") and (output_line.startswith("Can't find") or output_line == "OK"):
                     # Special case for the variable forget on startup.
                     continue
 
