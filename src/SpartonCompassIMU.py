@@ -148,11 +148,20 @@ if __name__ == '__main__':
                 ser.write("%s\r\n" % output_line)
                 time.sleep(0.05) 
                 input_line = lines.next()
-                if input_line != output_line and input_line != output_line + "OK":
-                    print repr(input_line), repr(output_line)
-                    rospy.logwarn("Bad output program. Retrying now.")
-                    success = False
-                    break
+                if input_line == output_line:
+                    # Line echoed back exactly.
+                    continue
+                if input_line == output_line + "OK":
+                    # Line echoed with acknowledgment.
+                    continue
+                if input_line.startswith("forget") and output_line.startswith("Can't find"):
+                    # Special case for the variable forget on startup.
+                    continue
+
+                print repr(input_line), repr(output_line)
+                rospy.logwarn("Bad output program. Retrying now.")
+                success = False
+                break
                     
         rospy.loginfo("Program sent successfully. Commencing sensor output.")
                     
